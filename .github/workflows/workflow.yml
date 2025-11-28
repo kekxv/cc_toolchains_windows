@@ -1,0 +1,45 @@
+name: workflow.yml
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-version: 1.x
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+      - name: Bazel Build
+        run: |
+          bazel build --config=windows toolchain/windows/wrapper:cl_wrapper
+  example:
+    needs: build-windows
+    name: Build example
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-version: 1.x
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+      - name: Bazel Build example
+        working-directory: ./examples
+        run: |
+          bazel build --config=windows :app
+          file bazel-bin/app.exe
+      - name: Bazel Build example(windows86)
+        working-directory: ./examples
+        run: |
+          bazel build --config=windows86 :app
+          file bazel-bin/app.exe
+
+
