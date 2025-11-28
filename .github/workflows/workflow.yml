@@ -35,11 +35,18 @@ jobs:
         working-directory: ./examples
         run: |
           bazel build --config=windows :app
+      - name: check app.exe
+        working-directory: ./examples
+        run: |
           file bazel-bin/app.exe
+
       - name: Bazel Build example(windows86)
         working-directory: ./examples
         run: |
           bazel build --config=windows86 :app
+      - name: check app.exe (windows86)
+        working-directory: ./examples
+        run: |
           file bazel-bin/app.exe
 
 
