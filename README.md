@@ -1,4 +1,17 @@
+
 # cc_toolchains_windows
+
+## use
+
+```MODULE.bazel
+bazel_dep(name = "cc_toolchains_windows", version = "0.0.1")
+git_override(
+    module_name = "cc_toolchains_windows",
+    commit = "21d17f8dc68feb46d50103e93d844dc48f968363",
+    init_submodules = True,
+    remote = "https://github.com/kekxv/cc_toolchains_windows.git",
+)
+```
 
 [English](#english) | [中文](#chinese)
 
