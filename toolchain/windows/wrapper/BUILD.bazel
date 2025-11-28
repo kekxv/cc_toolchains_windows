@@ -1,0 +1,27 @@
+cc_binary(
+    name = "cl_wrapper",
+    srcs = ["cl_wrapper.cpp"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_binary(
+    name = "cl_wrapper_x86",
+    srcs = ["cl_wrapper.cpp"],
+    local_defines = ["VCVARS32_"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_binary(
+    name = "lib_wrapper",
+    srcs = ["lib_wrapper.cpp"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)

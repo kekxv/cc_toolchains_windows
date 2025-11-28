@@ -1,0 +1,18 @@
+module(
+    name = "cc_toolchains_windows",
+    version = "0.0.1",
+)
+
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "rules_cc", version = "0.2.14")
+
+register_execution_platforms(
+    "//:windows_x86",
+    "//:windows_x64",
+)
+
+register_toolchains(
+    "//:windows_x86_toolchain",
+    "//:windows_x64_toolchain",
+)

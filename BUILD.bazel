@@ -1,0 +1,19 @@
+alias(
+    name = "windows_x86",
+    actual = "//platforms:windows_x86",
+)
+
+alias(
+    name = "windows_x64",
+    actual = "//platforms:windows_x64",
+)
+
+alias(
+    name = "windows_x86_toolchain",
+    actual = "//toolchain/windows:windows_x64_toolchain",
+)
+
+alias(
+    name = "windows_x64_toolchain",
+    actual = "//toolchain/windows:windows_x86_toolchain",
+)
