@@ -10,4 +10,5 @@ if not exist _tmp mkdir _tmp
 set TEMP=%cd%\_tmp
 set TMP=%cd%\_tmp
 
-python "%~dp0cl_wrapper.py" %*
+@REM python "%~dp0cl_wrapper.py" %*
+%~dp0cl_wrapper_x86.exe %*

@@ -7,7 +7,6 @@ filegroup(
     name = "toolchain_wrappers",
     srcs = glob([
         "*.bat",
-        "*.py",
         "*.exe",
     ]),
 )
