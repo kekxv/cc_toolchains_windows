@@ -1,0 +1,14 @@
+cc_library(
+    name = "lib",
+    srcs = glob(["lib/*.cpp"]),
+    hdrs = glob(["lib/*.h"]),
+    includes = ["lib"],
+)
+
+cc_binary(
+    name = "app",
+    srcs = ["src/main.cpp"],
+    deps = [
+        ":lib",
+    ],
+)
