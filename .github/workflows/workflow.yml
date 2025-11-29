@@ -49,4 +49,22 @@ jobs:
         run: |
           file bazel-bin/app.exe
 
+      - name: Bazel Build example(rules_foreign_cc)
+        working-directory: ./examples
+        run: |
+          bazel build --config=windows third-party/fmtlib:test_fmt
+      - name: check test_fmt.exe
+        working-directory: ./examples
+        run: |
+          file bazel-bin/third-party/fmtlib/test_fmt.exe
+
+      - name: Bazel Build example(windows86,rules_foreign_cc)
+        working-directory: ./examples
+        run: |
+          bazel build --config=windows86 third-party/fmtlib:test_fmt
+      - name: check test_fmt.exe (windows86,rules_foreign_cc)
+        working-directory: ./examples
+        run: |
+          file bazel-bin/third-party/fmtlib/test_fmt.exe
+
 
