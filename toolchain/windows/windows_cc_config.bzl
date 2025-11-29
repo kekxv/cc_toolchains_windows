@@ -3,6 +3,8 @@ load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
     "action_config",
     "artifact_name_pattern",
+    "env_entry",
+    "env_set",
     "feature",
     "flag_group",
     "flag_set",
@@ -155,7 +157,29 @@ def _impl(ctx):
 
     archiver_param_file_feature = feature(name = "archiver_param_file", enabled = True)
     linker_param_file_feature = feature(name = "linker_param_file", enabled = True)
-
+    env_feature = feature(
+        name = "env_vars",
+        enabled = True,
+        env_sets = [
+            env_set(
+                actions = [
+                    ACTION_NAMES.c_compile,
+                    ACTION_NAMES.cpp_compile,
+                    ACTION_NAMES.cpp_link_executable,
+                    ACTION_NAMES.cpp_link_static_library,
+                ],
+                env_entries = [
+                    # Windows 构建通常必须包含 SystemRoot
+                    env_entry(key = "PATH", value = "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;"),
+                    env_entry(key = "SystemRoot", value = "C:\\Windows"),
+                    # 如果你的 wrapper 需要 TEMP 目录
+                    env_entry(key = "TEMP", value = "C:\\Windows\\Temp"),
+                    env_entry(key = "TMP", value = "C:\\Windows\\Temp"),
+                    env_entry(key = "VSLANG", value = "1033"),
+                ],
+            ),
+        ],
+    )
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
         toolchain_identifier = "windows-msvc-" + cpu,
@@ -187,6 +211,7 @@ def _impl(ctx):
             static_link_msvcrt_feature,
             archiver_param_file_feature,
             linker_param_file_feature,
+            env_feature,
         ],
     )
 

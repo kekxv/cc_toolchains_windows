@@ -356,12 +356,32 @@ int main(int argc, char* argv[]) {
         if (arg.empty()) continue;
         
         bool is_flag = false;
-        // 模仿 Python 逻辑: if any(c in arg for c in "rcsq") and "/" not in arg ...
-        // 这通常是为了过滤 'rcs' 这种 Unix 风格归档参数
-        if (arg.find_first_of("/\\") == std::string::npos && 
-            arg.find(".lib") == std::string::npos && 
+
+        // 【新增修复】：处理 MSVC 风格的参数 (/nologo, /out:..., /machine:...)
+        if (arg[0] == '/') {
+            // 检查是否是 /out: 或 /OUT:
+            if (arg.size() > 5) {
+                std::string prefix = arg.substr(0, 5);
+                // 简单的忽略大小写比较
+                std::transform(prefix.begin(), prefix.end(), prefix.begin(), ::tolower);
+                if (prefix == "/out:") {
+                    output_file = arg.substr(5);
+                    std::replace(output_file.begin(), output_file.end(), '/', '\\');
+                    continue; // 这是输出文件参数，处理完后跳过
+                }
+            }
+
+            // 如果是其他以 / 开头的参数（如 /nologo, /machine:x64），视为 flag 跳过
+            // 注意：如果你的输入文件路径可能以 / 开头（例如 /usr/lib/...），这可能会误判。
+            // 但在 Windows 环境下配合 lib.exe，以 / 开头的通常是 flag。
+            is_flag = true;
+        }
+
+        // 兼容原有的逻辑：处理 ar 风格的参数
+        if (arg.find_first_of("/\\") == std::string::npos &&
+            arg.find(".lib") == std::string::npos &&
             arg.find(".obj") == std::string::npos) {
-            
+
             bool has_rcsq = false;
             for (char c : arg) {
                 if (std::string("rcsq").find(c) != std::string::npos) {
@@ -377,6 +397,9 @@ int main(int argc, char* argv[]) {
         std::string fixed_arg = arg;
         std::replace(fixed_arg.begin(), fixed_arg.end(), '/', '\\');
 
+        // 如果 output_file 还没定，且当前不是 /out: 指定的（因为上面已经continue了），
+        // 这里的逻辑通常是针对 positional arguments（位置参数）的。
+        // 如果你的调用方严格使用了 /out:，这里的 output_file 赋值逻辑主要是作为 fallback。
         if (output_file.empty()) {
             output_file = fixed_arg;
         } else {
