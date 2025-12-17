@@ -6,17 +6,18 @@ build:windows_default --cxxopt='/wd5031'
 build:windows_default --cxxopt='/wd4668'
 build:windows_default --cxxopt='/wd4820'
 build:windows_default --features=static_link_msvcrt
+build:windows_default --features=compiler_param_file
 
 # Windows 编译
 build:windows --config=windows_default
-build:windows --platforms=//platforms:windows_x64
+build:windows --platforms=//:windows_x64
 build:windows --cpu=x64_windows
-build:windows --extra_execution_platforms=//platforms:windows_x64
+build:windows --extra_execution_platforms=//:windows_x64
 
 # Windows32 编译
 build:windows86 --config=windows_default
 build:windows86 --cpu=x86_windows
-build:windows86 --platforms=//platforms:windows_x86
-build:windows86 --extra_execution_platforms=//platforms:windows_x86
+build:windows86 --platforms=//:windows_x86
+build:windows86 --extra_execution_platforms=//:windows_x86
 
 build:hardlinking --remote_instance_name=hardlinking

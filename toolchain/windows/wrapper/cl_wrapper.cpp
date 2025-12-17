@@ -201,11 +201,14 @@ std::wstring FindVisualStudioPath()
       L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Community",
       L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
       L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Professional",
+      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\BuildTools",
       L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
       L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
       L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional",
+      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
       L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise"
+      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise",
+      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools"
     };
     for (const auto& p : candidates)
     {
