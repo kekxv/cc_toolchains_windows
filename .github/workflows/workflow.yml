@@ -1,7 +1,12 @@
 name: workflow.yml
 on:
   push:
-    branches: [ main ]
+    branches: [ main , develop ]
+    paths-ignore: # 如果提交中仅包含这些文件，不触发工作流
+      - 'README.md'
+  pull_request:
+    paths-ignore: # 如果 PR 中仅包含这些文件，不触发工作流
+      - 'README.md'
 jobs:
   build-windows:
     runs-on: windows-latest

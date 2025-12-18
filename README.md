@@ -2,7 +2,7 @@
 
 ## install
 
-- vs2022 or other version
+- vs2019 or other version
 - msys64
 -
 
@@ -12,9 +12,19 @@
 bazel_dep(name = "cc_toolchains_windows", version = "0.0.1")
 git_override(
     module_name = "cc_toolchains_windows",
-    commit = "21d17f8dc68feb46d50103e93d844dc48f968363",
+    commit = "4bc5ac69aa6e651b68e833b5c7d90044a71bdaa0",
     init_submodules = True,
     remote = "https://github.com/kekxv/cc_toolchains_windows.git",
+)
+
+register_execution_platforms(
+    "@cc_toolchains_windows//:windows_x86",
+    "@cc_toolchains_windows//:windows",
+)
+
+register_toolchains(
+    "@cc_toolchains_windows//:windows_x86_toolchain",
+    "@cc_toolchains_windows//:windows_toolchain",
 )
 ```
 
