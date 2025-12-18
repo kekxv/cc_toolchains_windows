@@ -12,10 +12,10 @@ include("//third-party/fmtlib:repositories.MODULE.bazel")
 
 register_execution_platforms(
     "@cc_toolchains_windows//:windows_x86",
-    "@cc_toolchains_windows//:windows_x64",
+    "@cc_toolchains_windows//:windows",
 )
 
 register_toolchains(
     "@cc_toolchains_windows//:windows_x86_toolchain",
-    "@cc_toolchains_windows//:windows_x64_toolchain",
+    "@cc_toolchains_windows//:windows_toolchain",
 )

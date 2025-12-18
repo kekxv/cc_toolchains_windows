@@ -10,9 +10,9 @@ build:windows_default --features=compiler_param_file
 
 # Windows 编译
 build:windows --config=windows_default
-build:windows --platforms=@cc_toolchains_windows//:windows_x64
+build:windows --platforms=@cc_toolchains_windows//:windows
 build:windows --cpu=x64_windows
-build:windows --extra_execution_platforms=@cc_toolchains_windows//:windows_x64
+build:windows --extra_execution_platforms=@cc_toolchains_windows//:windows
 
 # Windows32 编译
 build:windows86 --config=windows_default

@@ -9,11 +9,21 @@ alias(
 )
 
 alias(
+    name = "windows",
+    actual = ":windows_x64",
+)
+
+alias(
     name = "windows_x86_toolchain",
-    actual = "//toolchain/windows:windows_x64_toolchain",
+    actual = "//toolchain/windows:windows_x86_toolchain",
 )
 
 alias(
     name = "windows_x64_toolchain",
-    actual = "//toolchain/windows:windows_x86_toolchain",
+    actual = "//toolchain/windows:windows_x64_toolchain",
+)
+
+alias(
+    name = "windows_toolchain",
+    actual = ":windows_x64_toolchain",
 )
