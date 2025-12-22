@@ -198,6 +198,10 @@ std::wstring FindVisualStudioPath()
   {
     CoUninitialize();
     std::vector<std::wstring> candidates = {
+      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Community",
+      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise",
+      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+      L"C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools",
       L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Community",
       L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
       L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Professional",

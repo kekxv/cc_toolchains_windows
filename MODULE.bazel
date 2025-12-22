@@ -6,3 +6,13 @@ module(
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "rules_cc", version = "0.2.14")
+#
+#register_execution_platforms(
+#    "@cc_toolchains_windows//:windows_x86",
+#    "@cc_toolchains_windows//:windows",
+#)
+#
+#register_toolchains(
+#    "@cc_toolchains_windows//:windows_x86_toolchain",
+#    "@cc_toolchains_windows//:windows_toolchain",
+#)
