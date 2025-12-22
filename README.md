@@ -12,7 +12,7 @@
 bazel_dep(name = "cc_toolchains_windows", version = "0.0.1")
 git_override(
     module_name = "cc_toolchains_windows",
-    commit = "4bc5ac69aa6e651b68e833b5c7d90044a71bdaa0",
+    commit = "e6e877684895c90599ab3b6ca4b2a1197fd970b3",
     init_submodules = True,
     remote = "https://github.com/kekxv/cc_toolchains_windows.git",
 )
