@@ -195,23 +195,6 @@ std::wstring FindVisualStudioPath()
   if (FAILED(hr))
   {
     CoUninitialize();
-    // std::vector<std::wstring> candidates = {
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\Community",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Community",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Professional",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\BuildTools",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
-    //   L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community",
-    //   L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise",
-    //   L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools"
-    // };
     std::vector<std::wstring> candidates;
     std::vector<std::wstring> base_paths;
 
@@ -465,9 +448,18 @@ int main(int argc, char* argv[])
   std::wstring libExePath = L"lib.exe"; // 默认 fallback
   std::map<std::wstring, std::wstring> envMap;
 
-  if (!vsPath.empty())
+  // =============================================================
+  // [修改] 检测 BAZEL_VC，如果存在则跳过 LoadVSEnvironment
+  // =============================================================
+  bool hasBazelVC = (GetEnvironmentVariableW(L"BAZEL_VC", NULL, 0) > 0);
+
+  if (!hasBazelVC && !vsPath.empty())
   {
     envMap = LoadVSEnvironment(vsPath); // 加载基础环境，主要是为了 DLL
+  }
+
+  if (!vsPath.empty())
+  {
     std::wstring msvcVer = FindLatestMSVCVersion(vsPath);
     if (!msvcVer.empty())
     {
@@ -638,6 +630,10 @@ int main(int argc, char* argv[])
 
   std::vector<wchar_t> envBlock;
   LPVOID pEnv = NULL;
+
+  // 只有在 envMap 不为空时才创建环境块。
+  // 如果因为检测到 BAZEL_VC 而跳过加载，envMap 为空，pEnv 为 NULL，
+  // CreateProcess 将自动继承当前进程环境（这正是我们想要的）。
   if (!envMap.empty())
   {
     wchar_t buf[32767];

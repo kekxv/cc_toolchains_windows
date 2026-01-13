@@ -12,9 +12,6 @@
 #include <sstream>
 #include <regex>
 
-#include <filesystem>
-#include <algorithm>
-
 namespace fs = std::filesystem;
 
 // 检查路径是否存在
@@ -111,8 +108,6 @@ struct ISetupConfiguration2 : public ISetupConfiguration
 };
 
 #endif
-
-namespace fs = std::filesystem;
 
 // =============================================================
 // 字符串与路径工具函数
@@ -225,23 +220,6 @@ std::wstring FindVisualStudioPath()
   if (FAILED(hr))
   {
     CoUninitialize();
-    // std::vector<std::wstring> candidates = {
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\Community",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Community",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Professional",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2026\\BuildTools",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional",
-    //   L"C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
-    //   L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community",
-    //   L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise",
-    //   L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools"
-    // };
     std::vector<std::wstring> candidates;
     std::vector<std::wstring> base_paths;
 
@@ -601,11 +579,93 @@ int main(int argc, char* argv[])
   std::wstring vsPath = FindVisualStudioPath();
   std::map<std::wstring, std::wstring> envMap;
 
-  std::wstring clExePath = L"cl.exe";
+  // =============================================================
+  // 检测 BAZEL_VC 环境变量。如果存在，跳过 LoadVSEnvironment
+  // =============================================================
+  bool hasBazelVC = (GetEnvironmentVariableW(L"BAZEL_VC", NULL, 0) > 0);
 
-  if (!vsPath.empty())
+  if (!hasBazelVC && !vsPath.empty())
   {
     envMap = LoadVSEnvironment(vsPath);
+  }
+
+  // =============================================================
+  // [修改] 处理 /bazel-show-args=name 参数
+  // =============================================================
+  for (int i = 1; i < argc; ++i)
+  {
+    std::string currentArg = argv[i];
+    std::string prefix = "/bazel-show-args=";
+
+    // 检查参数是否以指定前缀开头
+    if (currentArg.size() > prefix.size() && currentArg.substr(0, prefix.size()) == prefix)
+    {
+      // 提取 name (例如 /bazel-show-args=windows -> windows)
+      std::string configName = currentArg.substr(prefix.size());
+
+      std::vector<std::wstring> keys = {
+        L"BAZEL_VC", L"PATH", L"INCLUDE", L"LIB", L"LIBPATH",
+        L"WindowsSdkDir", L"WindowsLibPath", L"UniversalCRTSdkDir",
+        L"UCRTVersion", L"VCINSTALLDIR", L"VisualStudioVersion"
+      };
+
+      // Helper lambda: 获取环境变量
+      auto getValue = [&](const std::wstring& k) -> std::wstring
+      {
+        if (!envMap.empty())
+        {
+          std::wstring val = GetEnvVarCaseInsensitive(envMap, k);
+          if (!val.empty()) return val;
+        }
+        wchar_t buf[32767];
+        if (GetEnvironmentVariableW(k.c_str(), buf, 32767))
+        {
+          return std::wstring(buf);
+        }
+        return L"";
+      };
+
+      // Helper lambda: 转义反斜杠 ( \ -> \\ )
+      auto escapeBackslashes = [](const std::string& s) -> std::string
+      {
+        std::string res;
+        res.reserve(s.size() + 16);
+        for (char c : s)
+        {
+          if (c == '\\')
+          {
+            res += "\\\\";
+          }
+          else
+          {
+            res += c;
+          }
+        }
+        return res;
+      };
+
+      for (const auto& key : keys)
+      {
+        std::wstring val = getValue(key);
+        if (!val.empty())
+        {
+          std::string valUtf8 = WStringToString(val);
+          // 输出格式修改为 build:name --action_env=...
+          std::cout << "build:" << configName << " --action_env=\""
+            << WStringToString(key) << "=" << escapeBackslashes(valUtf8)
+            << "\"" << std::endl;
+        }
+      }
+      return 0; // 输出完环境变量后直接退出
+    }
+  }
+
+  std::wstring clExePath = L"cl.exe";
+
+  // 只有在加载了环境映射的情况下才尝试去查找 cl.exe 的具体路径
+  // 如果 skipped (BAZEL_VC exists)，则假设 PATH 已经设置好，直接用 cl.exe
+  if (!envMap.empty())
+  {
     std::wstring pathVar = GetEnvVarCaseInsensitive(envMap, L"PATH");
     if (!pathVar.empty())
     {
@@ -688,6 +748,10 @@ int main(int argc, char* argv[])
 
   std::vector<wchar_t> envBlock;
   LPVOID pEnv = NULL;
+
+  // 只有 envMap 非空时才构建环境块。
+  // 如果 envMap 为空（因为检测到 BAZEL_VC 而跳过了加载），则 pEnv 为 NULL，
+  // CreateProcess 会继承当前进程（Bazel 设置好的）环境。
   if (!envMap.empty())
   {
     wchar_t buf[32767];
