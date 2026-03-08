@@ -12,7 +12,7 @@ load(
     "tool_path",
     "variable_with_value",
 )
-load("@rules_cc//cc:defs.bzl", "CcToolchainConfigInfo")
+load("@rules_cc//cc:defs.bzl", "CcToolchainConfigInfo", "cc_common")
 
 def _impl(ctx):
     cpu = ctx.attr.cpu
@@ -180,6 +180,22 @@ def _impl(ctx):
             ),
         ],
     )
+
+    # 定义一个 feature
+    default_libs_feature = feature(
+        name = "default_libs",
+        enabled = True,  # 默认启用
+        flag_sets = [
+            flag_set(
+                actions = [ACTION_NAMES.cpp_link_executable],
+                flag_groups = [
+                    flag_group(
+                        flags = ["advapi32.lib", "user32.lib", "kernel32.lib"],
+                    ),
+                ],
+            ),
+        ],
+    )
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
         toolchain_identifier = "windows-msvc-" + cpu,
@@ -212,6 +228,7 @@ def _impl(ctx):
             archiver_param_file_feature,
             linker_param_file_feature,
             env_feature,
+            default_libs_feature,
         ],
     )
 
