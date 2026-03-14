@@ -17,7 +17,7 @@ load("@rules_cc//cc:defs.bzl", "CcToolchainConfigInfo", "cc_common")
 def _impl(ctx):
     cpu = ctx.attr.cpu
 
-    # 1. 确定架构和 Wrapper 后缀 (用于 cl/link)
+    # 1. 确定架构和 Wrapper 后缀
     if cpu == "x64_windows":
         wrapper_suffix = ".bat"
         target_cpu_name = "x64_windows"
@@ -41,6 +41,32 @@ def _impl(ctx):
         tool_path(name = "objdump", path = "false_wrapper.bat"),
         tool_path(name = "strip", path = "false_wrapper.bat"),
     ]
+
+    # =========================================================
+    # Features - 宏定义
+    # =========================================================
+
+    # 定义 __WIN32__ 和 _WINDOWS 宏
+    default_defines_feature = feature(
+        name = "default_defines",
+        enabled = True,
+        flag_sets = [
+            flag_set(
+                actions = [
+                    ACTION_NAMES.c_compile,
+                    ACTION_NAMES.cpp_compile,
+                ],
+                flag_groups = [
+                    flag_group(
+                        flags = [
+                            "/D__WIN32__",
+                            "/D_WINDOWS",
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
 
     # =========================================================
     # Action Configs
@@ -90,7 +116,7 @@ def _impl(ctx):
         ],
     )
 
-    # B. 可执行文件链接 (保持不变)
+    # 可执行文件链接
     cpp_link_executable_action = action_config(
         action_name = ACTION_NAMES.cpp_link_executable,
         tools = [tool(path = cl_wrapper)],
@@ -157,6 +183,7 @@ def _impl(ctx):
 
     archiver_param_file_feature = feature(name = "archiver_param_file", enabled = True)
     linker_param_file_feature = feature(name = "linker_param_file", enabled = True)
+
     env_feature = feature(
         name = "env_vars",
         enabled = True,
@@ -181,10 +208,9 @@ def _impl(ctx):
         ],
     )
 
-    # 定义一个 feature
     default_libs_feature = feature(
         name = "default_libs",
-        enabled = True,  # 默认启用
+        enabled = True,
         flag_sets = [
             flag_set(
                 actions = [ACTION_NAMES.cpp_link_executable],
@@ -196,6 +222,7 @@ def _impl(ctx):
             ),
         ],
     )
+
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
         toolchain_identifier = "windows-msvc-" + cpu,
@@ -229,6 +256,7 @@ def _impl(ctx):
             linker_param_file_feature,
             env_feature,
             default_libs_feature,
+            default_defines_feature,
         ],
     )
 
