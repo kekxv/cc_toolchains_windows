@@ -12,6 +12,34 @@
 #include <sstream>
 #include <regex>
 
+#include <filesystem>
+#include <algorithm>
+
+namespace fs = std::filesystem;
+
+// 检查路径是否存在
+bool directory_exists(const std::wstring& path)
+{
+  return fs::exists(path) && fs::is_directory(path);
+}
+
+// 查找指定目录下的子目录
+void find_subdirectories(const std::wstring& parent_dir, std::vector<std::wstring>& candidates)
+{
+  if (!directory_exists(parent_dir))
+  {
+    return;
+  }
+
+  for (const auto& entry : fs::directory_iterator(parent_dir))
+  {
+    if (entry.is_directory())
+    {
+      candidates.push_back(entry.path().wstring());
+    }
+  }
+}
+
 // =============================================================
 // COM 接口定义 (用于查找 Visual Studio)
 // =============================================================
@@ -167,23 +195,47 @@ std::wstring FindVisualStudioPath()
   if (FAILED(hr))
   {
     CoUninitialize();
-    std::vector<std::wstring> candidates = {
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Community",
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise",
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Community",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Professional",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\BuildTools",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools"
-    };
+    std::vector<std::wstring> candidates;
+    std::vector<std::wstring> base_paths;
+
+    // 获取 Program Files 和 Program Files (x86) 的路径
+    const wchar_t* program_files = _wgetenv(L"ProgramFiles");
+    if (program_files)
+    {
+      base_paths.push_back(std::wstring(program_files) + L"\\Microsoft Visual Studio");
+    }
+    else
+    {
+      base_paths.emplace_back(L"C:\\Program Files\\Microsoft Visual Studio");
+      base_paths.emplace_back(L"D:\\Program Files\\Microsoft Visual Studio");
+      base_paths.emplace_back(L"E:\\Program Files\\Microsoft Visual Studio");
+    }
+
+    const wchar_t* program_files_x86 = _wgetenv(L"ProgramFiles(x86)");
+    if (program_files_x86)
+    {
+      base_paths.push_back(std::wstring(program_files_x86) + L"\\Microsoft Visual Studio");
+    }
+    else
+    {
+      base_paths.emplace_back(L"C:\\Program Files (x86)\\Microsoft Visual Studio");
+      base_paths.emplace_back(L"D:\\Program Files (x86)\\Microsoft Visual Studio");
+      base_paths.emplace_back(L"E:\\Program Files (x86)\\Microsoft Visual Studio");
+    }
+
+    // 遍历基础路径，查找年份文件夹 (e.g., 2019, 2022)
+    std::vector<std::wstring> year_dirs;
+    for (const auto& base_path : base_paths)
+    {
+      find_subdirectories(base_path, year_dirs);
+    }
+
+    // 遍历年份文件夹，查找版本文件夹 (e.g., Community, Enterprise)
+    for (const auto& year_dir : year_dirs)
+    {
+      find_subdirectories(year_dir, candidates);
+    }
+
     for (const auto& p : candidates)
     {
       if (fs::exists(p)) return p;
@@ -396,9 +448,18 @@ int main(int argc, char* argv[])
   std::wstring libExePath = L"lib.exe"; // 默认 fallback
   std::map<std::wstring, std::wstring> envMap;
 
-  if (!vsPath.empty())
+  // =============================================================
+  // [修改] 检测 BAZEL_VC，如果存在则跳过 LoadVSEnvironment
+  // =============================================================
+  bool hasBazelVC = (GetEnvironmentVariableW(L"BAZEL_VC", NULL, 0) > 0);
+
+  if (!hasBazelVC && !vsPath.empty())
   {
     envMap = LoadVSEnvironment(vsPath); // 加载基础环境，主要是为了 DLL
+  }
+
+  if (!vsPath.empty())
+  {
     std::wstring msvcVer = FindLatestMSVCVersion(vsPath);
     if (!msvcVer.empty())
     {
@@ -569,6 +630,10 @@ int main(int argc, char* argv[])
 
   std::vector<wchar_t> envBlock;
   LPVOID pEnv = NULL;
+
+  // 只有在 envMap 不为空时才创建环境块。
+  // 如果因为检测到 BAZEL_VC 而跳过加载，envMap 为空，pEnv 为 NULL，
+  // CreateProcess 将自动继承当前进程环境（这正是我们想要的）。
   if (!envMap.empty())
   {
     wchar_t buf[32767];

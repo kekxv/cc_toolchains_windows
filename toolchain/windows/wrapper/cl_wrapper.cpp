@@ -12,6 +12,31 @@
 #include <sstream>
 #include <regex>
 
+namespace fs = std::filesystem;
+
+// 检查路径是否存在
+bool directory_exists(const std::wstring& path)
+{
+  return fs::exists(path) && fs::is_directory(path);
+}
+
+// 查找指定目录下的子目录
+void find_subdirectories(const std::wstring& parent_dir, std::vector<std::wstring>& candidates)
+{
+  if (!directory_exists(parent_dir))
+  {
+    return;
+  }
+
+  for (const auto& entry : fs::directory_iterator(parent_dir))
+  {
+    if (entry.is_directory())
+    {
+      candidates.push_back(entry.path().wstring());
+    }
+  }
+}
+
 // =============================================================
 // Visual Studio Setup Configuration COM 接口定义
 // =============================================================
@@ -84,8 +109,6 @@ struct ISetupConfiguration2 : public ISetupConfiguration
 
 #endif
 
-namespace fs = std::filesystem;
-
 // =============================================================
 // 字符串与路径工具函数
 // =============================================================
@@ -108,14 +131,10 @@ std::wstring StringToWString(const std::string& str)
   return wstrTo;
 }
 
-// =============================================================
-// [优化] 处理单个参数的转义逻辑
-// =============================================================
 std::string ProcessClArgument(const std::string& arg)
 {
   std::string arg_to_write = arg;
 
-  // 1. 针对宏定义 (/D 或 -D)，如果值中包含引号，必须转义为 \"
   if (arg_to_write.size() > 2 && (arg_to_write.substr(0, 2) == "/D" || arg_to_write.substr(0, 2) == "-D"))
   {
     std::string escaped;
@@ -124,15 +143,8 @@ std::string ProcessClArgument(const std::string& arg)
     {
       if (arg_to_write[i] == '"')
       {
-        // 检查前面是否已经有转义符
-        if (i > 0 && arg_to_write[i - 1] == '\\')
-        {
-          escaped += '"';
-        }
-        else
-        {
-          escaped += "\\\""; // 变成 \"
-        }
+        if (i > 0 && arg_to_write[i - 1] == '\\') escaped += '"';
+        else escaped += "\\\"";
       }
       else
       {
@@ -142,8 +154,6 @@ std::string ProcessClArgument(const std::string& arg)
     arg_to_write = escaped;
   }
 
-  // 2. 路径/空格引号处理
-  // 如果包含空格且不包含引号，且不是 "/link"，则加上双引号
   bool need_quote = (arg_to_write.find(' ') != std::string::npos) && (arg_to_write.find('"') == std::string::npos);
 
   if (need_quote && arg_to_write != "/link")
@@ -153,10 +163,6 @@ std::string ProcessClArgument(const std::string& arg)
 
   return arg_to_write;
 }
-
-// =============================================================
-// 环境与查找逻辑
-// =============================================================
 
 void SetupSystemPath()
 {
@@ -197,23 +203,30 @@ std::wstring FindVisualStudioPath()
   if (FAILED(hr))
   {
     CoUninitialize();
-    std::vector<std::wstring> candidates = {
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Community",
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise",
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
-      L"C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Community",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\Professional",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2026\\BuildTools",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional",
-      L"C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise",
-      L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools"
-    };
+    std::vector<std::wstring> candidates;
+    std::vector<std::wstring> base_paths;
+
+    const wchar_t* program_files = _wgetenv(L"ProgramFiles");
+    if (program_files) base_paths.push_back(std::wstring(program_files) + L"\\Microsoft Visual Studio");
+    else
+    {
+      base_paths.emplace_back(L"C:\\Program Files\\Microsoft Visual Studio");
+      base_paths.emplace_back(L"D:\\Program Files\\Microsoft Visual Studio");
+    }
+
+    const wchar_t* program_files_x86 = _wgetenv(L"ProgramFiles(x86)");
+    if (program_files_x86) base_paths.push_back(std::wstring(program_files_x86) + L"\\Microsoft Visual Studio");
+    else
+    {
+      base_paths.emplace_back(L"C:\\Program Files (x86)\\Microsoft Visual Studio");
+      base_paths.emplace_back(L"D:\\Program Files (x86)\\Microsoft Visual Studio");
+    }
+
+    std::vector<std::wstring> year_dirs;
+    for (const auto& base_path : base_paths) find_subdirectories(base_path, year_dirs);
+
+    for (const auto& year_dir : year_dirs) find_subdirectories(year_dir, candidates);
+
     for (const auto& p : candidates)
     {
       if (fs::exists(p)) return p;
@@ -276,13 +289,20 @@ std::wstring FindVisualStudioPath()
 std::map<std::wstring, std::wstring> LoadVSEnvironment(const std::wstring& vsPath)
 {
   std::map<std::wstring, std::wstring> envMap;
+
+  std::wstring vcvars;
 #ifdef VCVARS32_
-  std::wstring vcvars = vsPath + L"\\VC\\Auxiliary\\Build\\vcvars32.bat";
+  std::wstring scriptName = L"vcvars32.bat";
 #else
-  std::wstring vcvars = vsPath + L"\\VC\\Auxiliary\\Build\\vcvars64.bat";
+  std::wstring scriptName = L"vcvars64.bat";
 #endif
 
-  if (!fs::exists(vcvars)) return envMap;
+  std::wstring path1 = vsPath + L"\\VC\\Auxiliary\\Build\\" + scriptName;
+  std::wstring path2 = vsPath + L"\\Auxiliary\\Build\\" + scriptName;
+
+  if (fs::exists(path1)) vcvars = path1;
+  else if (fs::exists(path2)) vcvars = path2;
+  else return envMap;
 
   std::wstring cmd = L"cmd.exe /c \"\"" + vcvars + L"\" > nul && set\"";
 
@@ -301,7 +321,6 @@ std::map<std::wstring, std::wstring> LoadVSEnvironment(const std::wstring& vsPat
   if (CreateProcessW(NULL, &cmd[0], NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
   {
     CloseHandle(hWrite);
-
     std::string output;
     char buffer[4096];
     DWORD bytesRead;
@@ -360,10 +379,7 @@ std::wstring FindExecutableInPath(const std::wstring& exeName, const std::wstrin
     try
     {
       fs::path p = fs::path(segment) / exeName;
-      if (fs::exists(p))
-      {
-        return p.wstring();
-      }
+      if (fs::exists(p)) return p.wstring();
     }
     catch (...)
     {
@@ -385,10 +401,6 @@ std::wstring GetEnvVarCaseInsensitive(const std::map<std::wstring, std::wstring>
   }
   return L"";
 }
-
-// =============================================================
-// 参数转换逻辑
-// =============================================================
 
 struct TransformedArgs
 {
@@ -529,30 +541,111 @@ int main(int argc, char* argv[])
   SetEnvironmentVariableW(L"TMP", tmp_dir.c_str());
   SetEnvironmentVariableW(L"VSLANG", L"1033");
 
-  std::wstring vsPath = FindVisualStudioPath();
+  // =============================================================
+  // 既要检查 INCLUDE，也必须检查 cl.exe 是否真的在 PATH 里
+  // 如果 Bazel 只给了 INCLUDE 却没给包含 cl.exe 的 PATH，我们必须自己找！
+  // =============================================================
+  wchar_t checkInclude[32768];
+  bool hasIncludeEnv = (GetEnvironmentVariableW(L"INCLUDE", checkInclude, 32768) > 0);
+
+  wchar_t sysPathBuf[32768];
+  GetEnvironmentVariableW(L"PATH", sysPathBuf, 32768);
+  std::wstring clExePath = FindExecutableInPath(L"cl.exe", sysPathBuf);
+
   std::map<std::wstring, std::wstring> envMap;
 
-  std::wstring clExePath = L"cl.exe";
-
-  if (!vsPath.empty())
+  // 如果没有 INCLUDE，或者当前的 PATH 里根本找不到 cl.exe，就强制加载 VS 环境
+  if (!hasIncludeEnv || clExePath.empty())
   {
-    envMap = LoadVSEnvironment(vsPath);
-    std::wstring pathVar = GetEnvVarCaseInsensitive(envMap, L"PATH");
-    if (!pathVar.empty())
+    wchar_t bazelVCBuf[MAX_PATH];
+    if (GetEnvironmentVariableW(L"BAZEL_VC", bazelVCBuf, MAX_PATH) > 0)
     {
-      std::wstring foundPath = FindExecutableInPath(L"cl.exe", pathVar);
-      if (!foundPath.empty())
+      envMap = LoadVSEnvironment(std::wstring(bazelVCBuf));
+    }
+
+    // 如果没有 BAZEL_VC 或者根据它加载失败，使用自动搜索到的 VS 路径
+    if (envMap.empty())
+    {
+      std::wstring vsPath = FindVisualStudioPath();
+      if (!vsPath.empty())
       {
-        clExePath = foundPath;
+        envMap = LoadVSEnvironment(vsPath);
       }
+    }
+
+    // 从新加载的环境变量中，再次寻找 cl.exe 的绝对路径
+    if (!envMap.empty())
+    {
+      std::wstring newPathVar = GetEnvVarCaseInsensitive(envMap, L"PATH");
+      std::wstring found = FindExecutableInPath(L"cl.exe", newPathVar);
+      if (!found.empty()) clExePath = found;
+    }
+  }
+
+  // 万一真的找不到，只能 fallback（但这通常会引发 Error 2）
+  if (clExePath.empty())
+  {
+    clExePath = L"cl.exe";
+  }
+
+  // =============================================================
+  // 处理 /bazel-show-args=name 参数
+  // =============================================================
+  for (int i = 1; i < argc; ++i)
+  {
+    std::string currentArg = argv[i];
+    std::string prefix = "/bazel-show-args=";
+
+    if (currentArg.size() > prefix.size() && currentArg.substr(0, prefix.size()) == prefix)
+    {
+      std::string configName = currentArg.substr(prefix.size());
+      std::vector<std::wstring> keys = {
+        L"BAZEL_VC", L"PATH", L"INCLUDE", L"LIB", L"LIBPATH",
+        L"WindowsSdkDir", L"WindowsLibPath", L"UniversalCRTSdkDir",
+        L"UCRTVersion", L"VCINSTALLDIR", L"VisualStudioVersion"
+      };
+
+      auto getValue = [&](const std::wstring& k) -> std::wstring
+      {
+        if (!envMap.empty())
+        {
+          std::wstring val = GetEnvVarCaseInsensitive(envMap, k);
+          if (!val.empty()) return val;
+        }
+        wchar_t buf[32767];
+        if (GetEnvironmentVariableW(k.c_str(), buf, 32767)) return std::wstring(buf);
+        return L"";
+      };
+
+      auto escapeBackslashes = [](const std::string& s) -> std::string
+      {
+        std::string res;
+        res.reserve(s.size() + 16);
+        for (char c : s)
+        {
+          if (c == '\\') res += "\\\\";
+          else res += c;
+        }
+        return res;
+      };
+
+      for (const auto& key : keys)
+      {
+        std::wstring val = getValue(key);
+        if (!val.empty())
+        {
+          std::string valUtf8 = WStringToString(val);
+          std::cout << "build:" << configName << " --action_env=\""
+            << WStringToString(key) << "=" << escapeBackslashes(valUtf8)
+            << "\"" << std::endl;
+        }
+      }
+      return 0;
     }
   }
 
   std::vector<std::string> raw_args;
-  for (int i = 1; i < argc; ++i)
-  {
-    raw_args.push_back(argv[i]);
-  }
+  for (int i = 1; i < argc; ++i) raw_args.push_back(argv[i]);
 
   std::vector<std::string> effective_args;
   if (raw_args.size() == 1 && raw_args[0][0] == '@')
@@ -580,18 +673,11 @@ int main(int argc, char* argv[])
   std::string clExePathUtf8 = WStringToString(clExePath);
   std::string final_cmd_line = "\"" + clExePathUtf8 + "\"";
 
-  // =============================================================
-  // [使用优化后的函数] 构建命令或生成 Response File
-  // =============================================================
   if (raw_args.size() == 1 && raw_args[0][0] == '@')
   {
     std::string param_file = raw_args[0].substr(1) + ".msvc";
     std::ofstream ofs(param_file);
-    for (const auto& a : tArgs.args)
-    {
-      // 调用抽取出的公共函数
-      ofs << ProcessClArgument(a) << "\n";
-    }
+    for (const auto& a : tArgs.args) ofs << ProcessClArgument(a) << "\n";
     ofs.close();
     final_cmd_line += " @" + param_file;
   }
@@ -600,7 +686,6 @@ int main(int argc, char* argv[])
     for (const auto& a : tArgs.args)
     {
       final_cmd_line += " ";
-      // 调用抽取出的公共函数
       final_cmd_line += ProcessClArgument(a);
     }
   }
@@ -619,6 +704,7 @@ int main(int argc, char* argv[])
 
   std::vector<wchar_t> envBlock;
   LPVOID pEnv = NULL;
+
   if (!envMap.empty())
   {
     wchar_t buf[32767];
@@ -723,11 +809,9 @@ int main(int argc, char* argv[])
       else if (line.find("D9025") != std::string::npos || line.find("D9014") != std::string::npos || line.find("D9002")
         != std::string::npos)
       {
-        // ignore
       }
       else if (!source_file_name.empty() && line == source_file_name)
       {
-        // ignore echo of source filename
       }
       else
       {
@@ -752,10 +836,7 @@ int main(int argc, char* argv[])
       std::string exe_name = tArgs.output_file + ".exe";
       if (fs::exists(exe_name) && !fs::exists(tArgs.output_file))
       {
-        try
-        {
-          fs::copy_file(exe_name, tArgs.output_file, fs::copy_options::overwrite_existing);
-        }
+        try { fs::copy_file(exe_name, tArgs.output_file, fs::copy_options::overwrite_existing); }
         catch (...)
         {
         }
