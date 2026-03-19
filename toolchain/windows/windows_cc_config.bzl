@@ -116,7 +116,23 @@ def _impl(ctx):
         ],
     )
 
-    # 可执行文件链接
+    # 1. 增加一个优化 feature
+    fast_link_feature = feature(
+        name = "fast_link",
+        enabled = True,  # 默认开启
+        flag_sets = [
+            flag_set(
+                actions = [ACTION_NAMES.cpp_link_executable],
+                flag_groups = [
+                    flag_group(
+                        flags = ["/DEBUG:FASTLINK", "/INCREMENTAL:NO", "/NOLOGO"],
+                    ),
+                ],
+            ),
+        ],
+    )
+
+    # 2. 简化 executable action
     cpp_link_executable_action = action_config(
         action_name = ACTION_NAMES.cpp_link_executable,
         tools = [tool(path = cl_wrapper)],
@@ -251,6 +267,7 @@ def _impl(ctx):
             artifact_name_pattern(category_name = "object_file", prefix = "", extension = ".obj"),
         ],
         features = [
+            fast_link_feature,
             static_link_msvcrt_feature,
             archiver_param_file_feature,
             linker_param_file_feature,
