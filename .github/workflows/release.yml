@@ -74,17 +74,18 @@ jobs:
         run: |
           file bazel-bin/third-party/fmtlib/test_fmt.exe
 
-  # Job 3: 源码打包发布 (依赖所有编译检查完成，仅 main 分支)
+  # Job 3: 源码打包发布 (依赖所有编译检查完成)
   release:
     name: Create Release
     needs: [build-windows, example]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     outputs:
       tag_name: ${{ steps.release_info.outputs.tag_name }}
       version: ${{ steps.release_info.outputs.version }}
       archive_name: ${{ steps.release_info.outputs.archive_name }}
       tar_gz_integrity: ${{ steps.integrity.outputs.tar_gz_integrity }}
+      is_prerelease: ${{ steps.release_info.outputs.is_prerelease }}
 
     steps:
       - name: Checkout Repository
@@ -96,20 +97,34 @@ jobs:
         id: release_info
         run: |
           VERSION=$(date +'%Y%m%d')
-          FULL_VERSION="${VERSION}.${{ github.run_number }}"
+          BASE_VERSION="${VERSION}.${{ github.run_number }}"
           REPO_NAME="${{ github.event.repository.name }}"
+
+          # develop 分支添加 -dev 后缀，标记为预发布
+          if [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            FULL_VERSION="${BASE_VERSION}-dev"
+            IS_PRERELEASE="true"
+            RELEASE_TYPE="预发布"
+          else
+            FULL_VERSION="${BASE_VERSION}"
+            IS_PRERELEASE="false"
+            RELEASE_TYPE="正式发布"
+          fi
 
           echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
           echo "tag_name=v${FULL_VERSION}" >> $GITHUB_OUTPUT
-          echo "release_name=Release ${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "release_name=${RELEASE_TYPE} ${FULL_VERSION}" >> $GITHUB_OUTPUT
           echo "archive_name=${REPO_NAME}-${FULL_VERSION}" >> $GITHUB_OUTPUT
           echo "module_version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
 
           echo "=== Release Info ==="
           echo "Version: $FULL_VERSION"
           echo "Tag: v${FULL_VERSION}"
           echo "Archive: ${REPO_NAME}-${FULL_VERSION}"
+          echo "Type: $RELEASE_TYPE"
+          echo "Prerelease: $IS_PRERELEASE"
 
       - name: Update MODULE.bazel version
         run: |
@@ -202,6 +217,7 @@ jobs:
           tag_name: ${{ steps.release_info.outputs.tag_name }}
           name: ${{ steps.release_info.outputs.release_name }}
           generate_release_notes: true
+          prerelease: ${{ steps.release_info.outputs.is_prerelease == 'true' }}
           files: |
             dist/*.tar.gz
             dist/*.zip
@@ -214,6 +230,7 @@ jobs:
             | **版本** | `${{ steps.release_info.outputs.module_version }}` |
             | **分支** | `${{ github.ref_name }}` |
             | **提交** | `${{ github.sha }}` |
+            | **类型** | `${{ steps.release_info.outputs.is_prerelease == 'true' && '预发布 (Pre-release)' || '正式发布 (Release)' }}` |
 
             ### 支持的平台
             - ✅ windows (x86_64)
@@ -265,6 +282,7 @@ jobs:
           echo "| Tag | \`${{ steps.release_info.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`${{ steps.release_info.outputs.module_version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Archive | \`${{ steps.release_info.outputs.archive_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | \`${{ steps.release_info.outputs.is_prerelease == 'true' && '预发布' || '正式发布' }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔐 Integrity" >> $GITHUB_STEP_SUMMARY
           echo "| 文件 | Integrity |" >> $GITHUB_STEP_SUMMARY
@@ -283,11 +301,11 @@ jobs:
           echo ")" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  # Job 4: 发布到 BCR (依赖 release 完成)
+  # Job 4: 发布到 BCR (依赖 release 完成，仅正式发布)
   publish-to-bcr:
     name: Publish to BCR
     needs: release
-    #if: github.ref == 'refs/heads/main'
+    # if: needs.release.outputs.is_prerelease == 'false'
     uses: kekxv/bcr/.github/workflows/publish_to_bcr.yml@publish-to-bcr
     with:
       tag_name: ${{ needs.release.outputs.tag_name }}
