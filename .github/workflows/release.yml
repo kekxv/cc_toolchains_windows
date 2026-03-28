@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -292,5 +293,5 @@ jobs:
       tag_name: ${{ needs.release.outputs.tag_name }}
       module_name: "cc_toolchains_windows"
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
