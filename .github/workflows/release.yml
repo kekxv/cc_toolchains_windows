@@ -1,0 +1,296 @@
+name: CI & Release
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - 'README.md'
+      - '.bcr/**'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - '.bcr/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Windows 编译检查
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-version: 1.x
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-windows
+          repository-cache: true
+      - name: Bazel Build wrapper
+        run: |
+          bazel build --config=windows toolchain/windows/wrapper:cl_wrapper
+
+  # Job 2: 示例测试 (依赖 build-windows)
+  example:
+    name: Example ${{ matrix.config }}
+    needs: build-windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./examples
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: windows
+          - config: windows86
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-version: 1.x
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-${{ matrix.config }}
+          repository-cache: true
+      - name: Build app
+        run: |
+          bazel build --config=${{ matrix.config }} :app
+      - name: Check app.exe
+        run: |
+          file bazel-bin/app.exe
+      - name: Build fmtlib test
+        run: |
+          bazel build --config=${{ matrix.config }} third-party/fmtlib:test_fmt
+      - name: Check test_fmt.exe
+        run: |
+          file bazel-bin/third-party/fmtlib/test_fmt.exe
+
+  # Job 3: 源码打包发布 (依赖所有编译检查完成，仅 main 分支)
+  release:
+    name: Create Release
+    needs: [build-windows, example]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      tag_name: ${{ steps.release_info.outputs.tag_name }}
+      version: ${{ steps.release_info.outputs.version }}
+      archive_name: ${{ steps.release_info.outputs.archive_name }}
+      tar_gz_integrity: ${{ steps.integrity.outputs.tar_gz_integrity }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate version and release info
+        id: release_info
+        run: |
+          VERSION=$(date +'%Y%m%d')
+          FULL_VERSION="${VERSION}.${{ github.run_number }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+
+          echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+          echo "tag_name=v${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "release_name=Release ${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "archive_name=${REPO_NAME}-${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "module_version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+
+          echo "=== Release Info ==="
+          echo "Version: $FULL_VERSION"
+          echo "Tag: v${FULL_VERSION}"
+          echo "Archive: ${REPO_NAME}-${FULL_VERSION}"
+
+      - name: Update MODULE.bazel version
+        run: |
+          MODULE_VERSION="${{ steps.release_info.outputs.module_version }}"
+
+          echo "Updating MODULE.bazel version to: $MODULE_VERSION"
+          echo ""
+          echo "Before:"
+          head -10 MODULE.bazel
+
+          sed -i '/^module(/,/)/ s/version = "[^"]*"/version = "'"${MODULE_VERSION}"'"/' MODULE.bazel
+
+          echo ""
+          echo "After:"
+          head -10 MODULE.bazel
+
+      - name: Create and push tag
+        run: |
+          TAG_NAME="${{ steps.release_info.outputs.tag_name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add MODULE.bazel
+          git commit -m "Update version to ${TAG_NAME}" || echo "No changes to commit"
+
+          git tag -a "$TAG_NAME" -m "Release ${{ steps.release_info.outputs.module_version }}"
+          git push origin "$TAG_NAME"
+          echo "Tag $TAG_NAME created and pushed successfully"
+
+      - name: Create source archive (exclude examples and .github)
+        id: archive
+        run: |
+          ARCHIVE_NAME="${{ steps.release_info.outputs.archive_name }}"
+
+          mkdir -p dist
+
+          tar --exclude='examples' \
+              --exclude='.git' \
+              --exclude='.github' \
+              --exclude='*.lock' \
+              --exclude='dist' \
+              --transform "s,^,${ARCHIVE_NAME}/," \
+              -czvf "dist/${ARCHIVE_NAME}.tar.gz" \
+              .
+
+          mkdir -p "dist/${ARCHIVE_NAME}"
+          rsync -av --progress . "dist/${ARCHIVE_NAME}/" \
+              --exclude examples \
+              --exclude .git \
+              --exclude .github \
+              --exclude '*.lock' \
+              --exclude dist
+
+          cd dist
+          zip -r "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}"
+          rm -rf "${ARCHIVE_NAME}"
+          cd ..
+
+          echo "Created archives:"
+          ls -lh dist/
+
+          echo ""
+          echo "Verifying MODULE.bazel in archive:"
+          tar -xzf "dist/${ARCHIVE_NAME}.tar.gz" -O "${ARCHIVE_NAME}/MODULE.bazel" | head -5
+
+      - name: Calculate integrity hash
+        id: integrity
+        run: |
+          ARCHIVE_NAME="${{ steps.release_info.outputs.archive_name }}"
+
+          TAR_GZ_HASH=$(sha256sum "dist/${ARCHIVE_NAME}.tar.gz" | cut -d' ' -f1)
+          TAR_GZ_INTEGRITY="sha256-$(echo -n "$TAR_GZ_HASH" | xxd -r -p | base64 -w0)"
+
+          ZIP_HASH=$(sha256sum "dist/${ARCHIVE_NAME}.zip" | cut -d' ' -f1)
+          ZIP_INTEGRITY="sha256-$(echo -n "$ZIP_HASH" | xxd -r -p | base64 -w0)"
+
+          echo "tar_gz_integrity=$TAR_GZ_INTEGRITY" >> $GITHUB_OUTPUT
+          echo "zip_integrity=$ZIP_INTEGRITY" >> $GITHUB_OUTPUT
+          echo "tar_gz_sha256=$TAR_GZ_HASH" >> $GITHUB_OUTPUT
+          echo "zip_sha256=$ZIP_HASH" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "=== Integrity Hashes ==="
+          echo "tar.gz: $TAR_GZ_INTEGRITY"
+          echo "zip:    $ZIP_INTEGRITY"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: ${{ steps.release_info.outputs.release_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+          body: |
+            ## 📦 ${{ steps.release_info.outputs.release_name }}
+
+            ### 构建信息
+            | 属性 | 值 |
+            |------|-----|
+            | **版本** | `${{ steps.release_info.outputs.module_version }}` |
+            | **分支** | `${{ github.ref_name }}` |
+            | **提交** | `${{ github.sha }}` |
+
+            ### 支持的平台
+            - ✅ windows (x86_64)
+            - ✅ windows_x86 (x86)
+
+            ### 文件校验
+            | 文件 | SHA256 | Integrity (SRI) |
+            |------|--------|-----------------|
+            | `${{ steps.release_info.outputs.archive_name }}.tar.gz` | `${{ steps.integrity.outputs.tar_gz_sha256 }}` | `${{ steps.integrity.outputs.tar_gz_integrity }}` |
+            | `${{ steps.release_info.outputs.archive_name }}.zip` | `${{ steps.integrity.outputs.zip_sha256 }}` | `${{ steps.integrity.outputs.zip_integrity }}` |
+
+            ### 使用方法
+
+            **MODULE.bazel (Bzlmod 推荐)**
+            ```starlark
+            bazel_dep(name = "cc_toolchains_windows", version = "${{ steps.release_info.outputs.module_version }}")
+
+            archive_override(
+                module_name = "cc_toolchains_windows",
+                integrity = "${{ steps.integrity.outputs.tar_gz_integrity }}",
+                strip_prefix = "${{ steps.release_info.outputs.archive_name }}",
+                urls = ["https://github.com/${{ github.repository }}/releases/download/${{ steps.release_info.outputs.tag_name }}/${{ steps.release_info.outputs.archive_name }}.tar.gz"],
+            )
+            ```
+
+            **WORKSPACE (传统方式)**
+            ```starlark
+            load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+            http_archive(
+                name = "cc_toolchains_windows",
+                integrity = "${{ steps.integrity.outputs.tar_gz_integrity }}",
+                strip_prefix = "${{ steps.release_info.outputs.archive_name }}",
+                urls = ["https://github.com/${{ github.repository }}/releases/download/${{ steps.release_info.outputs.tag_name }}/${{ steps.release_info.outputs.archive_name }}.tar.gz"],
+            )
+            ```
+
+            > ⚠️ 源码包已排除 `examples` 和 `.github` 目录
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "## 🎉 Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Release Info" >> $GITHUB_STEP_SUMMARY
+          echo "| 属性 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ steps.release_info.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.release_info.outputs.module_version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Archive | \`${{ steps.release_info.outputs.archive_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 Integrity" >> $GITHUB_STEP_SUMMARY
+          echo "| 文件 | Integrity |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| tar.gz | \`${{ steps.integrity.outputs.tar_gz_integrity }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| zip | \`${{ steps.integrity.outputs.zip_integrity }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Quick Copy" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`starlark" >> $GITHUB_STEP_SUMMARY
+          echo "bazel_dep(name = \"cc_toolchains_windows\", version = \"${{ steps.release_info.outputs.module_version }}\")" >> $GITHUB_STEP_SUMMARY
+          echo "archive_override(" >> $GITHUB_STEP_SUMMARY
+          echo "    module_name = \"cc_toolchains_windows\"," >> $GITHUB_STEP_SUMMARY
+          echo "    integrity = \"${{ steps.integrity.outputs.tar_gz_integrity }}\"," >> $GITHUB_STEP_SUMMARY
+          echo "    strip_prefix = \"${{ steps.release_info.outputs.archive_name }}\"," >> $GITHUB_STEP_SUMMARY
+          echo "    urls = [\"https://github.com/${{ github.repository }}/releases/download/${{ steps.release_info.outputs.tag_name }}/${{ steps.release_info.outputs.archive_name }}.tar.gz\"]," >> $GITHUB_STEP_SUMMARY
+          echo ")" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Job 4: 发布到 BCR (依赖 release 完成)
+  publish-to-bcr:
+    name: Publish to BCR
+    needs: release
+    #if: github.ref == 'refs/heads/main'
+    uses: kekxv/bcr/.github/workflows/publish_to_bcr.yml@publish-to-bcr
+    with:
+      tag_name: ${{ needs.release.outputs.tag_name }}
+      module_name: "cc_toolchains_windows"
+    permissions:
+      contents: read
+      pull-requests: write
