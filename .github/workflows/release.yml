@@ -245,7 +245,7 @@ jobs:
           echo ")" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  # Job 4: 发布到 BCR
+  # Job 4: 发布 BCR
   publish-to-bcr:
     name: Publish to BCR
     needs: release
