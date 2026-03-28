@@ -254,6 +254,8 @@ jobs:
     with:
       tag_name: ${{ needs.release.outputs.tag_name }}
       module_name: "cc_toolchains_windows"
+    secrets:
+      publish_token: ${{ secrets.PUBLISH_TOKEN }}
     permissions:
       contents: write
       pull-requests: write
