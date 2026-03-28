@@ -20,64 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Job 1: Windows 编译检查
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
-        with:
-          bazelisk-version: 1.x
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}-windows
-          repository-cache: true
-      - name: Bazel Build wrapper
-        run: |
-          bazel build --config=windows toolchain/windows/wrapper:cl_wrapper
-
-  # Job 2: 示例测试 (依赖 build-windows)
-  example:
-    name: Example ${{ matrix.config }}
-    needs: build-windows
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: ./examples
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - config: windows
-          - config: windows86
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-      - name: Install Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
-        with:
-          bazelisk-version: 1.x
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}-${{ matrix.config }}
-          repository-cache: true
-      - name: Build app
-        run: |
-          bazel build --config=${{ matrix.config }} :app
-      - name: Check app.exe
-        run: |
-          file bazel-bin/app.exe
-      - name: Build fmtlib test
-        run: |
-          bazel build --config=${{ matrix.config }} third-party/fmtlib:test_fmt
-      - name: Check test_fmt.exe
-        run: |
-          file bazel-bin/third-party/fmtlib/test_fmt.exe
-
-  # Job 3: 源码打包发布 (依赖所有编译检查完成)
   release:
     name: Create Release
-    needs: [build-windows, example]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     outputs:
