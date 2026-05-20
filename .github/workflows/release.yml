@@ -36,6 +36,9 @@ jobs:
       - name: Bazel Build wrapper
         run: |
           bazel build --config=windows toolchain/windows/wrapper:cl_wrapper
+      - name: Bazel Test
+        run: |
+          bazel test --config=windows toolchain/windows/...
 
   # Job 2: 示例测试 (依赖 build-windows)
   example:
