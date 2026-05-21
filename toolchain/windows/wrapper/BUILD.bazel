@@ -1,9 +1,130 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+# =============================================================
+# Shared libraries
+# =============================================================
+
+cc_library(
+    name = "common_com_defs",
+    hdrs = ["common/com_defs.h"],
+    includes = ["."],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_library(
+    name = "common_utils",
+    srcs = ["common/utils.cpp"],
+    hdrs = ["common/utils.h"],
+    includes = ["."],
+    deps = [":common_com_defs"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_library(
+    name = "common_vs_env",
+    srcs = ["common/vs_env.cpp"],
+    hdrs = ["common/vs_env.h"],
+    includes = ["."],
+    deps = [
+        ":common_com_defs",
+        ":common_utils",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_library(
+    name = "common_process",
+    srcs = ["common/process.cpp"],
+    hdrs = ["common/process.h"],
+    includes = ["."],
+    deps = [":common_utils"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+# =============================================================
+# cl_wrapper modules
+# =============================================================
+
+cc_library(
+    name = "cl_arg_transformer",
+    srcs = ["cl_wrapper/arg_transformer.cpp"],
+    hdrs = ["cl_wrapper/arg_transformer.h"],
+    includes = ["."],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_library(
+    name = "cl_depfile",
+    srcs = ["cl_wrapper/depfile.cpp"],
+    hdrs = ["cl_wrapper/depfile.h"],
+    includes = ["."],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_library(
+    name = "cl_show_args",
+    srcs = ["cl_wrapper/show_args.cpp"],
+    hdrs = ["cl_wrapper/show_args.h"],
+    includes = ["."],
+    deps = [":common_utils"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+# =============================================================
+# lib_wrapper modules
+# =============================================================
+
+cc_library(
+    name = "lib_rsp_generator",
+    srcs = ["lib_wrapper/rsp_generator.cpp"],
+    hdrs = ["lib_wrapper/rsp_generator.h"],
+    includes = ["."],
+    linkopts = ["ole32.lib"],
+    deps = [":common_utils"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+# =============================================================
+# Binary targets
+# =============================================================
 
 cc_binary(
     name = "cl_wrapper",
-    srcs = ["cl_wrapper.cpp"],
-    #cxxopts = ["/bazel-show-args=win64"],
+    srcs = ["cl_wrapper/main.cpp"],
+    deps = [
+        ":cl_arg_transformer",
+        ":cl_depfile",
+        ":cl_show_args",
+        ":common_process",
+        ":common_utils",
+        ":common_vs_env",
+    ],
     target_compatible_with = select({
         "@platforms//os:windows": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -12,9 +133,16 @@ cc_binary(
 
 cc_binary(
     name = "cl_wrapper_x86",
-    srcs = ["cl_wrapper.cpp"],
-    #cxxopts = ["/bazel-show-args=win32"],
+    srcs = ["cl_wrapper/main.cpp"],
     local_defines = ["VCVARS32_"],
+    deps = [
+        ":cl_arg_transformer",
+        ":cl_depfile",
+        ":cl_show_args",
+        ":common_process",
+        ":common_utils",
+        ":common_vs_env",
+    ],
     target_compatible_with = select({
         "@platforms//os:windows": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -23,7 +151,59 @@ cc_binary(
 
 cc_binary(
     name = "lib_wrapper",
-    srcs = ["lib_wrapper.cpp"],
+    srcs = ["lib_wrapper/main.cpp"],
+    deps = [
+        ":common_process",
+        ":common_utils",
+        ":common_vs_env",
+        ":lib_rsp_generator",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+# =============================================================
+# Tests
+# =============================================================
+
+cc_test(
+    name = "arg_transformer_test",
+    srcs = ["cl_wrapper/arg_transformer_test.cpp"],
+    deps = [
+        ":cl_arg_transformer",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_test(
+    name = "depfile_test",
+    srcs = ["cl_wrapper/depfile_test.cpp"],
+    deps = [
+        ":cl_depfile",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+cc_test(
+    name = "rsp_generator_test",
+    srcs = ["lib_wrapper/rsp_generator_test.cpp"],
+    deps = [
+        ":lib_rsp_generator",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
     target_compatible_with = select({
         "@platforms//os:windows": [],
         "//conditions:default": ["@platforms//:incompatible"],

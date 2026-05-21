@@ -2,9 +2,9 @@ build:windows_default --crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:windows_default --cxxopt='/std:c++20'
 build:windows_default --cxxopt='/utf-8'
 build:windows_default --copt='/utf-8'
-build:windows_default --cxxopt='/wd5031'
-build:windows_default --cxxopt='/wd4668'
-build:windows_default --cxxopt='/wd4820'
+#build:windows_default --cxxopt='/wd5031'
+#build:windows_default --cxxopt='/wd4668'
+#build:windows_default --cxxopt='/wd4820'
 build:windows_default --features=static_link_msvcrt
 build:windows_default --features=compiler_param_file
 
