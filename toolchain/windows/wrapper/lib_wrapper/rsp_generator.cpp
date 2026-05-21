@@ -89,7 +89,21 @@ std::string ParseLibArgs(const std::vector<std::string>& args,
 
     if (output_file.empty())
     {
-      output_file = fixed_arg;
+      std::string lower_arg = fixed_arg;
+      std::transform(lower_arg.begin(), lower_arg.end(), lower_arg.begin(), ::tolower);
+      bool is_obj = false;
+      if (lower_arg.size() > 4 && lower_arg.substr(lower_arg.size() - 4) == ".obj") is_obj = true;
+      else if (lower_arg.size() > 2 && lower_arg.substr(lower_arg.size() - 2) == ".o") is_obj = true;
+      else if (lower_arg.size() > 3 && lower_arg.substr(lower_arg.size() - 3) == ".lo") is_obj = true;
+
+      if (is_obj)
+      {
+        input_files.push_back(fixed_arg);
+      }
+      else
+      {
+        output_file = fixed_arg;
+      }
     }
     else
     {
